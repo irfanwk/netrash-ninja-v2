@@ -1,0 +1,22 @@
+{
+  "name": "netrash-ninja-v2",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "^0.10.14",
+    "pixi.js": "^8.6.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8"
+  }
+}

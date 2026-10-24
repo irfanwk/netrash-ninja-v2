@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>NETRASH NINJA — High-Performance Kiosk Edition</title>
+  <meta name="description" content="Tebas dan pilah sampah daur ulang, hindari limbah B3! Mode Solo & 1 vs 1 Versus interaktif gestur kamera untuk pameran NETRASH.">
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Manrope:wght@600;700;800;900&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-dark: #000000;
+      --card-bg: rgba(18, 24, 34, 0.94);
+      --card-border: rgba(255, 255, 255, 0.1);
+      --text-white: #ffffff;
+      --text-muted: #94a3b8;
+      --netrash-green: #16a34a;
+      --netrash-green-dark: #15803d;
+      --netrash-green-light: #86efac;
+      --cyan-p2: #0284c7;
+      --cyan-p2-light: #38bdf8;
+      --danger-base: #ef4444;
+      --danger-subtle: rgba(239, 68, 68, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: var(--bg-dark);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: var(--text-white);
+      touch-action: none;
+    }
+
+    #bg-layer {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: radial-gradient(circle at 50% 50%, rgba(20, 26, 38, 0.2) 0%, rgba(0, 0, 0, 0.85) 100%);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    #webcam-video {
+      position: absolute;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      object-fit: fill;
+      transform: scaleX(-1);
+      opacity: 0.65;
+      z-index: 2;
+      pointer-events: none;
+      display: block;
+      background-color: #000000;
+    }
+
+    #camera-scrim {
+      position: absolute;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background-color: rgba(0, 0, 0, 0.38);
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    #game-canvas {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      z-index: 5;
+      display: block;
+      cursor: crosshair;
+    }
+
+    #camera-status-pill {
+      position: absolute;
+      bottom: 20px; right: 24px;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      background: rgba(15, 20, 28, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(8px);
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #cbd5e1;
+      pointer-events: none;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    }
+
+    #camera-status-pill::before {
+      content: '';
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 8px #10b981;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.8); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+
+    #hud {
+      position: absolute;
+      top: 0; left: 0; width: 100%;
+      padding: 14px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 20;
+      pointer-events: none;
+    }
+
+    .hud-card {
+      pointer-events: auto;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(14px);
+      border-radius: 16px;
+      padding: 8px 18px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .hud-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .hud-brand-logo {
+      width: 32px; height: 32px;
+      background: #15803d;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 18px;
+      color: #fff;
+      font-family: 'Manrope', sans-serif;
+    }
+
+    .hud-title-wrap {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .hud-title {
+      font-size: 13.5px;
+      font-weight: 800;
+      letter-spacing: 0.3px;
+      color: #fff;
+      line-height: 1.15;
+      font-family: 'Manrope', sans-serif;
+    }
+
+    .hud-tag {
+      font-size: 10px;
+      font-weight: 600;
+      color: #94a3b8;
+      letter-spacing: 0.5px;
+    }
+
+    .hud-center {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .metric-pill {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 75px;
+    }
+
+    .metric-label {
+      font-size: 9.5px;
+      color: var(--text-muted);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+
+    .metric-value {
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1.1;
+      font-family: 'Manrope', sans-serif;
+    }
+
+    .metric-value.score { color: #fbbf24; }
+    .metric-value.co2 { color: #34d399; }
+    .metric-value.time { color: #60a5fa; }
+
+    .metric-value.time.warning {
+      color: #ef4444;
+      animation: blink 0.8s infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .hud-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-icon {
+      width: 38px; height: 38px;
+      border-radius: 10px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text-white);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      pointer-events: auto;
+      transition: all 0.2s;
+    }
+
+    .btn-icon:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.3);
+      transform: scale(1.04);
+    }
+
+    .btn-icon.active {
+      border-color: #10b981;
+      color: #34d399;
+    }
+
+    .btn-mode-toggle {
+      height: 38px;
+      padding: 0 14px;
+      border-radius: 10px;
+      background: #1e293b;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #fff;
+      font-size: 11.5px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      pointer-events: auto;
+      transition: all 0.2s;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .btn-mode-toggle:hover {
+      background: #334155;
+      border-color: rgba(255, 255, 255, 0.3);
+      transform: scale(1.03);
+    }
+
+    .lives-box {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+    }
+
+    .life-heart {
+      color: var(--danger-base);
+      filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.5));
+      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .life-heart.lost {
+      color: rgba(255, 255, 255, 0.2);
+      filter: none;
+      transform: scale(0.8);
+    }
+
+    .hud-group {
+      display: flex;
+      width: 100%;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .hud-group.hidden { display: none; }
+
+    .vs-player-badge {
+      padding: 3px 9px;
+      border-radius: 9999px;
+      font-size: 10.5px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+    }
+
+    .vs-player-badge.p1 {
+      background: rgba(16, 185, 129, 0.2);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+    }
+
+    .vs-player-badge.p2 {
+      background: rgba(2, 132, 199, 0.2);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.4);
+    }
+
+    .vs-center-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #dc2626;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 6px;
+    }
+
+    .screen-overlay {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      z-index: 40;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(4, 7, 12, 0.85);
+      backdrop-filter: blur(16px);
+      transition: opacity 0.3s ease;
+    }
+
+    .screen-overlay.hidden {
+      display: none;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .modal-card {
+      width: 90%;
+      max-width: 620px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      padding: 32px 34px;
+      text-align: left;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
+      position: relative;
+      animation: modalPop 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes modalPop {
+      0% { transform: scale(0.95) translateY(12px); opacity: 0; }
+      100% { transform: scale(1) translateY(0); opacity: 1; }
+    }
+
+    .modal-header-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-icon-box {
+      width: 38px; height: 38px;
+      background: #15803d;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 20px;
+      color: #fff;
+      font-family: 'Manrope', sans-serif;
+    }
+
+    .brand-text-meta h3 {
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      color: #fff;
+      font-family: 'Manrope', sans-serif;
+    }
+
+    .brand-text-meta p {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .event-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 10.5px;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .modal-hero-title {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      line-height: 1.2;
+      color: #ffffff;
+      font-family: 'Manrope', sans-serif;
+      margin-bottom: 6px;
+    }
+
+    .modal-tagline {
+      font-size: 13.5px;
+      color: #94a3b8;
+      line-height: 1.5;
+      margin-bottom: 20px;
+    }
+
+    .mode-toggle-wrap {
+      display: flex;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 4px;
+      margin-bottom: 22px;
+      gap: 4px;
+    }
+
+    .mode-tab-btn {
+      flex: 1;
+      padding: 9px 14px;
+      border-radius: 8px;
+      border: none;
+      background: transparent;
+      color: #94a3b8;
+      font-size: 12.5px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: 'Inter', sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .mode-tab-btn:hover { color: #fff; }
+
+    .mode-tab-btn.active.solo {
+      background: #15803d;
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    .mode-tab-btn.active.versus {
+      background: #0284c7;
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #94a3b8;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .target-chips-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+
+    .target-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+
+    .target-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+    }
+
+    .target-val {
+      font-size: 10.5px;
+      color: #94a3b8;
+      font-weight: 500;
+    }
+
+    .rules-panel-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .rule-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .rule-card-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .rule-card-desc {
+      font-size: 11px;
+      color: #94a3b8;
+      line-height: 1.45;
+    }
+
+    .rule-card.hazard {
+      background: var(--danger-subtle);
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+
+    .rule-card.hazard .rule-card-title { color: #fca5a5; }
+    .rule-card.hazard .rule-card-desc { color: #cbd5e1; }
+
+    .btn-play {
+      width: 100%;
+      height: 50px;
+      background: #16a34a;
+      border: none;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 700;
+      color: #ffffff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+      font-family: 'Inter', sans-serif;
+      box-shadow: 0 4px 14px rgba(22, 163, 74, 0.35);
+    }
+
+    .btn-play:hover {
+      background: #15803d;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 18px rgba(22, 163, 74, 0.45);
+    }
+
+    .btn-play.versus {
+      background: #0284c7;
+      box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
+    }
+
+    .btn-play.versus:hover {
+      background: #0369a1;
+      box-shadow: 0 6px 18px rgba(2, 132, 199, 0.45);
+    }
+
+    .result-grade {
+      font-size: 56px;
+      font-weight: 800;
+      line-height: 1;
+      margin: 8px 0;
+      color: #fbbf24;
+      font-family: 'Manrope', sans-serif;
+      text-align: center;
+    }
+
+    .stats-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .summary-card {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 12px 8px;
+      text-align: center;
+    }
+
+    .summary-card .val {
+      font-size: 19px;
+      font-weight: 800;
+      color: #fff;
+      font-family: 'Manrope', sans-serif;
+    }
+
+    .summary-card .lbl {
+      font-size: 9.5px;
+      color: var(--text-muted);
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-top: 3px;
+    }
+
+    .vs-compare-table {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 20px;
+      border-collapse: collapse;
+    }
+
+    .vs-compare-table th {
+      padding: 9px 12px;
+      font-size: 11.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      background: rgba(255, 255, 255, 0.05);
+      text-align: center;
+    }
+
+    .vs-compare-table td {
+      padding: 10px 12px;
+      font-size: 13.5px;
+      font-weight: 700;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      font-family: 'Manrope', sans-serif;
+      text-align: center;
+    }
+
+    .vs-col-p1 { color: #34d399; width: 40%; }
+    .vs-col-label { color: var(--text-muted); font-size: 10.5px; text-transform: uppercase; width: 20%; font-family: 'Inter', sans-serif; }
+    .vs-col-p2 { color: #38bdf8; width: 40%; }
+
+    .action-button-group {
+      display: flex;
+      gap: 10px;
+      width: 100%;
+    }
+
+    .btn-secondary {
+      flex: 1;
+      height: 50px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+
+    @media (max-width: 640px) {
+      #hud { padding: 8px 10px; }
+      .hud-card { padding: 6px 10px; }
+      .hud-title-wrap { display: none; }
+      .metric-value { font-size: 17px; }
+      .metric-pill { min-width: 50px; }
+      .modal-card { padding: 22px 18px; }
+      .modal-hero-title { font-size: 24px; }
+      .rules-panel-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Neutral Dark Background Layer -->
+  <div id="bg-layer"></div>
+
+  <!-- Video Element for Camera Tracking (Fullscreen edge-to-edge) -->
+  <video id="webcam-video" playsinline></video>
+
+  <!-- Neutral Dark Scrim (No green wash) -->
+  <div id="camera-scrim"></div>
+
+  <!-- WebGL Canvas for PixiJS v8 -->
+  <canvas id="game-canvas"></canvas>
+
+  <!-- Camera Status Indicator Pill -->
+  <div id="camera-status-pill">GESTUR KAMERA AKTIF</div>
+
+  <!-- Top In-Game HUD -->
+  <header id="hud">
+    <!-- 1. Solo Mode HUD Group -->
+    <div id="hud-solo-group" class="hud-group">
+      <div class="hud-card">
+        <div class="hud-brand">
+          <div class="hud-brand-logo">N</div>
+          <div class="hud-title-wrap">
+            <span class="hud-title">NETRASH NINJA</span>
+            <span class="hud-tag">SOLO CHALLENGE</span>
+          </div>
+        </div>
+        <div class="lives-box" id="solo-lives-container">
+          <svg class="life-heart" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+          <svg class="life-heart" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+          <svg class="life-heart" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+        </div>
+      </div>
+
+      <div class="hud-card hud-center">
+        <div class="metric-pill">
+          <span class="metric-label">SKOR</span>
+          <span class="metric-value score" id="solo-score">0</span>
+        </div>
+        <div class="metric-pill">
+          <span class="metric-label">REDUKSI CO₂</span>
+          <span class="metric-value co2" id="solo-co2">0.0 kg</span>
+        </div>
+        <div class="metric-pill">
+          <span class="metric-label">WAKTU</span>
+          <span class="metric-value time" id="solo-timer">60s</span>
+        </div>
+      </div>
+
+      <div class="hud-actions">
+        <button class="btn-mode-toggle" id="btn-toggle-mode-solo">
+          <span>1 VS 1</span>
+        </button>
+        <button class="btn-icon active" id="btn-audio" title="Audio Efek">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+        </button>
+        <button class="btn-icon active" id="btn-camera" title="Toggle Kamera Gestur">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        </button>
+        <button class="btn-icon" id="btn-fullscreen" title="Layar Penuh">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 2. Versus Mode (1 vs 1) HUD Group -->
+    <div id="hud-versus-group" class="hud-group hidden">
+      <div class="hud-card" style="border-color: rgba(16, 185, 129, 0.4);">
+        <span class="vs-player-badge p1">P1 (HIJAU)</span>
+        <div class="lives-box" id="p1-lives-container">
+          <svg class="life-heart" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+          <svg class="life-heart" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+          <svg class="life-heart" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+        </div>
+        <div class="metric-pill">
+          <span class="metric-label">SKOR</span>
+          <span class="metric-value score" id="p1-score" style="color: #34d399;">0</span>
+        </div>
+        <div class="metric-pill">
+          <span class="metric-label">CO₂</span>
+          <span class="metric-value co2" id="p1-co2">0.0 kg</span>
+        </div>
+      </div>
+
+      <div class="hud-card hud-center">
+        <span class="vs-center-badge">VERSUS</span>
+        <div class="metric-pill">
+          <span class="metric-label">WAKTU</span>
+          <span class="metric-value time" id="vs-timer">60s</span>
+        </div>
+        <button class="btn-mode-toggle" id="btn-toggle-mode-vs">
+          <span>SOLO</span>
+        </button>
+      </div>
+
+      <div class="hud-card" style="border-color: rgba(2, 132, 199, 0.4);">
+        <div class="metric-pill">
+          <span class="metric-label">CO₂</span>
+          <span class="metric-value co2" id="p2-co2" style="color: #38bdf8;">0.0 kg</span>
+        </div>
+        <div class="metric-pill">
+          <span class="metric-label">SKOR</span>
+          <span class="metric-value score" id="p2-score" style="color: #38bdf8;">0</span>
+        </div>
+        <div class="lives-box" id="p2-lives-container">
+          <svg class="life-heart" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+          <svg class="life-heart" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+          <svg class="life-heart" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+        </div>
+        <span class="vs-player-badge p2">P2 (CYAN)</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Start Screen Modal -->
+  <div class="screen-overlay" id="start-screen">
+    <div class="modal-card">
+      <div class="modal-header-strip">
+        <div class="brand-group">
+          <div class="brand-icon-box">N</div>
+          <div class="brand-text-meta">
+            <h3>NETRASH</h3>
+            <p>Net Zero Waste Digital Hub</p>
+          </div>
+        </div>
+        <div class="event-badge">
+          <span>•</span> Booth Exhibition
+        </div>
+      </div>
+
+      <h1 class="modal-hero-title">NETRASH NINJA</h1>
+      <p class="modal-tagline">Tantang dirimu buat lebih peduli! Tebas dan pilah sampah daur ulang, kumpulkan tabungan emisi karbon.</p>
+
+      <div class="mode-toggle-wrap">
+        <button class="mode-tab-btn active solo" id="tab-solo">
+          <span>Solo (1 Pemain)</span>
+        </button>
+        <button class="mode-tab-btn" id="tab-versus">
+          <span>1 vs 1 (2 Pemain)</span>
+        </button>
+      </div>
+
+      <div class="section-label">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        Target Sampah Daur Ulang
+      </div>
+      <div class="target-chips-container">
+        <div class="target-chip">
+          <div class="target-dot" style="background: #0284c7;"></div>
+          <span>Plastik</span>
+          <span class="target-val">+100 Pts</span>
+        </div>
+        <div class="target-chip">
+          <div class="target-dot" style="background: #f59e0b;"></div>
+          <span>Kardus</span>
+          <span class="target-val">+100 Pts</span>
+        </div>
+        <div class="target-chip">
+          <div class="target-dot" style="background: #38bdf8;"></div>
+          <span>Logam</span>
+          <span class="target-val">+150 Pts</span>
+        </div>
+        <div class="target-chip">
+          <div class="target-dot" style="background: #16a34a;"></div>
+          <span>Organik</span>
+          <span class="target-val">+80 Pts</span>
+        </div>
+        <div class="target-chip">
+          <div class="target-dot" style="background: #a855f7;"></div>
+          <span>Khusus</span>
+          <span class="target-val">+200 Pts</span>
+        </div>
+      </div>
+
+      <div class="rules-panel-grid">
+        <div class="rule-card">
+          <div class="rule-card-title">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2"><path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"/><path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>
+            Kontrol Gestur / Sentuh
+          </div>
+          <div class="rule-card-desc">
+            Ayunkan tangan di depan kamera atau toreh layar sentuh untuk menebas sampah.
+          </div>
+        </div>
+
+        <div class="rule-card hazard">
+          <div class="rule-card-title">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/></svg>
+            Hindari Limbah B3
+          </div>
+          <div class="rule-card-desc">
+            Jangan tebas baterai / bom B3. Ledakan langsung mengurangi 1 nyawa pemain!
+          </div>
+        </div>
+      </div>
+
+      <button class="btn-play" id="btn-start-game">
+        <span>Mulai Permainan</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Game Over Screen Modal (No QR card) -->
+  <div class="screen-overlay hidden" id="gameover-screen">
+    <div class="modal-card" style="text-align: center;">
+      <div class="event-badge" id="result-badge" style="margin-bottom: 12px;">HASIL PERTANDINGAN</div>
+      <h2 class="modal-hero-title" id="result-title" style="text-align: center; margin-bottom: 12px;">WAKTU HABIS!</h2>
+      
+      <!-- Solo Result Container -->
+      <div id="result-solo-container">
+        <div class="result-grade" id="result-grade">A+</div>
+        <div class="stats-summary-grid">
+          <div class="summary-card">
+            <div class="val" id="res-score">1,450</div>
+            <div class="lbl">TOTAL SKOR</div>
+          </div>
+          <div class="summary-card">
+            <div class="val" id="res-co2">3.8 kg</div>
+            <div class="lbl">REDUKSI CO₂</div>
+          </div>
+          <div class="summary-card">
+            <div class="val" id="res-combo">5x</div>
+            <div class="lbl">MAX COMBO</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Versus 1 vs 1 Comparison Container -->
+      <div id="result-versus-container" class="hidden">
+        <table class="vs-compare-table">
+          <thead>
+            <tr>
+              <th class="vs-col-p1">PLAYER 1 (HIJAU)</th>
+              <th class="vs-col-label">STATISTIK</th>
+              <th class="vs-col-p2">PLAYER 2 (CYAN)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="vs-col-p1" id="vs-res-p1-score">1,200</td>
+              <td class="vs-col-label">SKOR</td>
+              <td class="vs-col-p2" id="vs-res-p2-score">950</td>
+            </tr>
+            <tr>
+              <td class="vs-col-p1" id="vs-res-p1-co2">2.4 kg</td>
+              <td class="vs-col-label">CO₂</td>
+              <td class="vs-col-p2" id="vs-res-p2-co2">1.8 kg</td>
+            </tr>
+            <tr>
+              <td class="vs-col-p1" id="vs-res-p1-combo">4x</td>
+              <td class="vs-col-label">COMBO</td>
+              <td class="vs-col-p2" id="vs-res-p2-combo">3x</td>
+            </tr>
+            <tr>
+              <td class="vs-col-p1" id="vs-res-p1-status">BERTAHAN</td>
+              <td class="vs-col-label">STATUS</td>
+              <td class="vs-col-p2" id="vs-res-p2-status">BERTAHAN</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="action-button-group">
+        <button class="btn-play" id="btn-restart-game" style="flex: 2;">
+          <span>Main Lagi</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+        </button>
+        <button class="btn-secondary" id="btn-switch-mode-result">
+          <span>Ganti Mode</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
