@@ -1,6 +1,6 @@
 import type { BladePoint, GameMode, PlayerSide } from '../types/game';
 
-export const MAX_POINT_CONNECT_DISTANCE = 160;
+export const MAX_POINT_CONNECT_DISTANCE = 240;
 
 /**
  * Checks if a line segment between (x1, y1) and (x2, y2) intersects a circle centered at (cx, cy) with radius r.

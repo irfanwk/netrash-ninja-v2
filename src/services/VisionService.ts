@@ -46,9 +46,9 @@ export class VisionService {
 
   constructor() {
     this.offscreenCanvas = document.createElement('canvas');
-    // Optimal downscaled tensor resolution (360x202) for MediaPipe internal 224x224 input
-    this.offscreenCanvas.width = 360;
-    this.offscreenCanvas.height = 202;
+    // Crisp resolution (640x360) ensuring hands are sharply captured even from 1.5 - 2 meters away
+    this.offscreenCanvas.width = 640;
+    this.offscreenCanvas.height = 360;
     this.offscreenCtx = this.offscreenCanvas.getContext('2d', { willReadFrequently: true });
   }
 
@@ -60,12 +60,12 @@ export class VisionService {
   public setMode(mode: GameMode): void {
     this.gameMode = mode;
     if (this.handTracker) {
-      // Dynamic hand allocation: Solo strictly 1 hand (50% CPU savings!), Versus 2 hands
+      // Dynamic hand allocation: Solo strictly 1 hand, Versus 2 hands
       this.handTracker.setOptions({
         maxNumHands: mode === 'VERSUS' ? 2 : 1,
-        modelComplexity: 0,
-        minDetectionConfidence: 0.3,
-        minTrackingConfidence: 0.3,
+        modelComplexity: 1, // Full robust neural model for noisy exhibition environments
+        minDetectionConfidence: 0.2, // Forgiving detection threshold for distant/angled hands
+        minTrackingConfidence: 0.2,
       });
     }
   }
@@ -87,9 +87,9 @@ export class VisionService {
 
       this.handTracker.setOptions({
         maxNumHands: this.gameMode === 'VERSUS' ? 2 : 1,
-        modelComplexity: 0,
-        minDetectionConfidence: 0.3,
-        minTrackingConfidence: 0.3,
+        modelComplexity: 1, // Full neural model for stable tracking under bright booth lights
+        minDetectionConfidence: 0.2,
+        minTrackingConfidence: 0.2,
       });
 
       this.handTracker.onResults((results) => {
@@ -132,7 +132,7 @@ export class VisionService {
       if (!this.isProcessing && this.video && this.video.readyState >= 2 && this.handTracker && this.offscreenCtx) {
         this.isProcessing = true;
         try {
-          this.offscreenCtx.drawImage(this.video, 0, 0, 360, 202);
+          this.offscreenCtx.drawImage(this.video, 0, 0, 640, 360);
           await this.handTracker.send({ image: this.offscreenCanvas });
         } catch {
           this.isProcessing = false;
@@ -157,7 +157,8 @@ export class VisionService {
       let bestP2: HandPosition | null = null;
 
       for (const landmarks of allHandsLandmarks) {
-        const pt = landmarks[8] || landmarks[12] || landmarks[9] || landmarks[0];
+        // Robust joint cascade: Tip (8) -> Joint (7) -> Middle (12) -> Knuckle (9) -> Wrist (0)
+        const pt = landmarks[8] || landmarks[7] || landmarks[12] || landmarks[9] || landmarks[0];
         if (!pt) continue;
 
         const screenX = (1 - pt.x) * width;
@@ -179,7 +180,8 @@ export class VisionService {
     } else {
       const firstHand = allHandsLandmarks[0];
       if (firstHand) {
-        const pt = firstHand[8] || firstHand[12] || firstHand[9] || firstHand[0];
+        // Robust joint cascade: Tip (8) -> Joint (7) -> Middle (12) -> Knuckle (9) -> Wrist (0)
+        const pt = firstHand[8] || firstHand[7] || firstHand[12] || firstHand[9] || firstHand[0];
         if (pt) {
           packet.soloHand = {
             x: (1 - pt.x) * width,
