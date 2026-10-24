@@ -133,7 +133,6 @@ interface ActiveParticle {
   alpha: number;
   radius: number;
   color: string;
-  graphics: Graphics;
 }
 
 interface ActiveText {
@@ -178,6 +177,12 @@ export class GameEngine {
   private reticleLayer = new Container();
   private textLayer = new Container();
 
+  // High-Performance Persistent Graphics (Zero WebGL buffer allocations per frame)
+  private bladeGfx = new Graphics();
+  private reticleGfx = new Graphics();
+  private particleGfx = new Graphics();
+  private lastWhooshTimes: Record<string, number> = { SOLO: 0, P1: 0, P2: 0 };
+
   // Active Entities
   private items: ActiveItem[] = [];
   private halves: SlicedHalf[] = [];
@@ -220,6 +225,11 @@ export class GameEngine {
     this.app.stage.addChild(this.bladeLayer);
     this.app.stage.addChild(this.reticleLayer);
     this.app.stage.addChild(this.textLayer);
+
+    // Persistent Graphics added once
+    this.particleLayer.addChild(this.particleGfx);
+    this.bladeLayer.addChild(this.bladeGfx);
+    this.reticleLayer.addChild(this.reticleGfx);
 
     // Register 60/120 FPS game ticker
     this.app.ticker.add((ticker) => {
@@ -308,10 +318,21 @@ export class GameEngine {
   }
 
   private addBladePoint(x: number, y: number, player: PlayerSide, isTeleport: boolean): void {
-    sound.playWhoosh(player === 'P2' ? 1.25 : 1.0);
-
     const arr = player === 'P1' ? this.p1BladePoints : player === 'P2' ? this.p2BladePoints : this.soloBladePoints;
     const now = performance.now();
+
+    // Throttled Audio: Only trigger whoosh on high-speed slashes (> 0.75 px/ms) and at most once per 220ms
+    if (arr.length > 0 && !isTeleport) {
+      const last = arr[arr.length - 1];
+      const dist = Math.hypot(x - last.x, y - last.y);
+      const dt = Math.max(1, now - last.time);
+      const speed = dist / dt;
+
+      if (speed > 0.75 && now - this.lastWhooshTimes[player] > 220) {
+        sound.playWhoosh(player === 'P2' ? 1.25 : 1.0);
+        this.lastWhooshTimes[player] = now;
+      }
+    }
 
     // Guard against rope bug: teleport or distance spike clears trail sequence
     if (isTeleport && arr.length > 0) {
@@ -713,17 +734,12 @@ export class GameEngine {
   }
 
   private spawnParticles(x: number, y: number, color: string, count: number): void {
-    for (let i = 0; i < count; i++) {
+    // Optimized particle count (14 instead of 38)
+    const safeCount = Math.min(count, 14);
+    for (let i = 0; i < safeCount; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = 2 + Math.random() * 7;
-      const gfx = new Graphics();
-      const radius = 2 + Math.random() * 4;
-
-      gfx.circle(0, 0, radius);
-      gfx.fill({ color });
-      gfx.position.set(x, y);
-
-      this.particleLayer.addChild(gfx);
+      const speed = 2 + Math.random() * 6;
+      const radius = 2 + Math.random() * 3.5;
 
       this.particles.push({
         x,
@@ -733,26 +749,23 @@ export class GameEngine {
         alpha: 1,
         radius,
         color,
-        graphics: gfx,
       });
     }
   }
 
   private updateParticles(dt: number): void {
+    this.particleGfx.clear();
+
     this.particles = this.particles.filter((p) => {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
-      p.vy += 0.15 * dt;
-      p.alpha -= 0.025 * dt;
+      p.vy += 0.16 * dt;
+      p.alpha -= 0.028 * dt;
 
-      p.graphics.position.set(p.x, p.y);
-      p.graphics.alpha = Math.max(0, p.alpha);
+      if (p.alpha <= 0) return false;
 
-      if (p.alpha <= 0) {
-        this.particleLayer.removeChild(p.graphics);
-        p.graphics.destroy();
-        return false;
-      }
+      this.particleGfx.circle(p.x, p.y, p.radius);
+      this.particleGfx.fill({ color: p.color, alpha: p.alpha });
       return true;
     });
   }
@@ -798,7 +811,7 @@ export class GameEngine {
   }
 
   private renderBlades(): void {
-    this.bladeLayer.removeChildren();
+    this.bladeGfx.clear();
 
     const now = performance.now();
     const prune = (arr: BladePoint[]) => arr.filter((pt) => now - pt.time < 180);
@@ -808,17 +821,15 @@ export class GameEngine {
     this.p2BladePoints = prune(this.p2BladePoints);
 
     if (this.gameMode === 'VERSUS') {
-      this.drawSingleBlade(this.p1BladePoints, '#10b981', 0x10b981);
-      this.drawSingleBlade(this.p2BladePoints, '#0284c7', 0x0284c7);
+      this.drawSingleBlade(this.bladeGfx, this.p1BladePoints, 0x10b981);
+      this.drawSingleBlade(this.bladeGfx, this.p2BladePoints, 0x0284c7);
     } else {
-      this.drawSingleBlade(this.soloBladePoints, '#10b981', 0x10b981);
+      this.drawSingleBlade(this.bladeGfx, this.soloBladePoints, 0x10b981);
     }
   }
 
-  private drawSingleBlade(points: BladePoint[], _colorStr: string, hexColor: number): void {
+  private drawSingleBlade(gfx: Graphics, points: BladePoint[], hexColor: number): void {
     if (points.length < 2) return;
-
-    const gfx = new Graphics();
 
     for (let i = 1; i < points.length; i++) {
       const p1 = points[i - 1];
@@ -832,19 +843,17 @@ export class GameEngine {
       // Outer halo
       gfx.moveTo(p1.x, p1.y);
       gfx.lineTo(p2.x, p2.y);
-      gfx.stroke({ width: progress * 20 + 6, color: hexColor, alpha: 0.25, cap: 'round' });
+      gfx.stroke({ width: progress * 18 + 5, color: hexColor, alpha: 0.25, cap: 'round' });
 
       // Main core blade
       gfx.moveTo(p1.x, p1.y);
       gfx.lineTo(p2.x, p2.y);
-      gfx.stroke({ width: progress * 10 + 3, color: 0xffffff, alpha: 0.9, cap: 'round' });
+      gfx.stroke({ width: progress * 9 + 3, color: 0xffffff, alpha: 0.9, cap: 'round' });
     }
-
-    this.bladeLayer.addChild(gfx);
   }
 
   private renderReticles(): void {
-    this.reticleLayer.removeChildren();
+    this.reticleGfx.clear();
 
     const now = performance.now();
     const pulse = Math.sin(now * 0.008) * 3;
@@ -853,27 +862,20 @@ export class GameEngine {
       const p1 = this.p1Smoother.getPointer();
       const p2 = this.p2Smoother.getPointer();
 
-      if (p1.isActive) this.drawReticle(p1.x, p1.y, 0x10b981, pulse);
-      if (p2.isActive) this.drawReticle(p2.x, p2.y, 0x0284c7, pulse);
+      if (p1.isActive) this.drawReticle(this.reticleGfx, p1.x, p1.y, 0x10b981, pulse);
+      if (p2.isActive) this.drawReticle(this.reticleGfx, p2.x, p2.y, 0x0284c7, pulse);
     } else {
       const solo = this.soloSmoother.getPointer();
-      if (solo.isActive) this.drawReticle(solo.x, solo.y, 0x10b981, pulse);
+      if (solo.isActive) this.drawReticle(this.reticleGfx, solo.x, solo.y, 0x10b981, pulse);
     }
   }
 
-  private drawReticle(x: number, y: number, color: number, pulse: number): void {
-    const gfx = new Graphics();
+  private drawReticle(gfx: Graphics, x: number, y: number, color: number, pulse: number): void {
     const radius = 22 + pulse;
-
-    // Outer ring
     gfx.circle(x, y, radius);
     gfx.stroke({ width: 3, color, alpha: 0.85 });
-
-    // Inner bright spark
     gfx.circle(x, y, 5);
     gfx.fill({ color: 0xffffff });
-
-    this.reticleLayer.addChild(gfx);
   }
 
   private drawArenaPartition(): void {
@@ -895,7 +897,6 @@ export class GameEngine {
   private clearAllEntities(): void {
     for (const item of this.items) item.container.destroy();
     for (const half of this.halves) half.container.destroy();
-    for (const p of this.particles) p.graphics.destroy();
     for (const t of this.floatTexts) t.text.destroy();
 
     this.items = [];
@@ -905,10 +906,12 @@ export class GameEngine {
 
     this.itemsLayer.removeChildren();
     this.halvesLayer.removeChildren();
-    this.particleLayer.removeChildren();
-    this.bladeLayer.removeChildren();
-    this.reticleLayer.removeChildren();
     this.textLayer.removeChildren();
+
+    // Persistent Graphics cleared
+    this.particleGfx.clear();
+    this.bladeGfx.clear();
+    this.reticleGfx.clear();
   }
 
   private emitStats(): void {

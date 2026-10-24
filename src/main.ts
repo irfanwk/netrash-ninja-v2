@@ -11,16 +11,17 @@ async function bootstrap() {
   const videoElement = document.getElementById('webcam-video') as HTMLVideoElement;
   const statusPill = document.getElementById('camera-status-pill') as HTMLDivElement;
 
-  // Initialize PixiJS v8 with WebGL / WebGPU preference and transparent canvas
+  // Initialize PixiJS v8 with High-Performance WebGL configuration
   const app = new Application();
   await app.init({
     canvas: canvasElement,
     resizeTo: window,
     backgroundAlpha: 0,
     preference: 'webgl',
-    antialias: true,
-    resolution: Math.min(window.devicePixelRatio || 1, 2),
-    autoDensity: true,
+    antialias: false,
+    resolution: 1, // Fixed 1:1 pixel grid, prevents rendering 4x/9x pixels on 2.5K/4K/Retina displays
+    autoDensity: false,
+    powerPreference: 'high-performance',
   });
 
   // Initialize Game Engine with reactive HUD callbacks
