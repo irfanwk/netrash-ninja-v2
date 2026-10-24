@@ -1,13 +1,13 @@
-# 🥷 NETRASH NINJA V-2 — High-Performance Kiosk Edition
+# 🥷 NETRASH NINJA — High-Performance Kiosk Edition
 
-Game arcade interaktif berbasis web untuk pameran booth **NETRASH**. Menggunakan **PixiJS v8** (WebGL/WebGPU), pelacakan gestur kamera **MediaPipe Tasks Vision** di background **Web Worker**, dan arsitektur modern **Vite + TypeScript**.
+Game arcade interaktif berbasis web untuk pameran booth **NETRASH**. Menggunakan **PixiJS v8** (WebGL/WebGPU), pelacakan gestur kamera **MediaPipe Hands**, dan arsitektur modern **Vite + TypeScript**.
 
 ---
 
-## 🚀 Keunggulan Arsitektur V-2
+## 🚀 Keunggulan Arsitektur
 
-1. **Zero Main-Thread Stutter (Web Worker Multi-Threading)**:
-   - Komputasi kecerdasan buatan pelacakan tangan berjalan di Web Worker terpisah.
+1. **Zero Main-Thread Stutter**:
+   - Komputasi inferensi kecerdasan buatan pelacakan tangan dioptimalkan dengan resolusi offscreen 480x270.
    - Main thread browser bebas me-render animasi game di 60–120 FPS tanpa terhambat latensi inferensi kamera.
 2. **Hardware-Accelerated 2D Rendering (PixiJS v8)**:
    - Menggunakan engine WebGL dan WebGPU dengan *hardware sprite batching*.

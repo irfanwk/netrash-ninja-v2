@@ -1,4 +1,4 @@
-name: Deploy NETRASH Ninja V-2 to GitHub Pages
+name: Deploy NETRASH Ninja to GitHub Pages
 
 on:
   push:
