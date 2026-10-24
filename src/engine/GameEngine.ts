@@ -463,9 +463,9 @@ export class GameEngine {
       // Dynamic Difficulty Progression: 0 (start) to 1 (near end of 60s)
       const progress = Math.min(1, Math.max(0, (60 - this.timeLeft) / 60));
 
-      // Cooldown accelerates as time runs down: 1200ms -> 600ms
-      const minCd = 550 + (1 - progress) * 550;
-      const maxCd = 850 + (1 - progress) * 650;
+      // Relaxed pacing: Early game ~1350ms-1650ms, Late game ~750ms-1050ms
+      const minCd = 750 + (1 - progress) * 600;
+      const maxCd = 1050 + (1 - progress) * 600;
       this.spawnCooldown = minCd + Math.random() * (maxCd - minCd);
 
       if (this.gameMode === 'VERSUS') {
@@ -473,36 +473,37 @@ export class GameEngine {
         this.createItem('P1', pair);
         this.createItem('P2', pair);
 
-        // Escalating multi-item burst chance
-        if (progress > 0.4 && Math.random() < 0.45) {
+        // Moderate follow-up pair in mid/late game
+        if (progress > 0.55 && Math.random() < 0.35) {
           setTimeout(() => {
             if (this.isRunning) {
               const burstPair = this.pickDynamicWaste(progress);
               this.createItem('P1', burstPair);
               this.createItem('P2', burstPair);
             }
-          }, 220);
+          }, 350);
         }
       } else {
+        // Solo Mode: Strictly max 3 items in late game
         const item = this.pickDynamicWaste(progress);
         this.createItem('SOLO', item);
 
-        // Extra burst in mid/late game
-        if (progress > 0.35 && Math.random() < 0.45) {
+        // 2nd item burst in mid/late game
+        if (progress > 0.40 && Math.random() < 0.40) {
           setTimeout(() => {
             if (this.isRunning) {
               this.createItem('SOLO', this.pickDynamicWaste(progress));
             }
-          }, 180);
+          }, 280);
         }
 
-        // Second wave burst in late game
-        if (progress > 0.7 && Math.random() < 0.55) {
+        // 3rd item burst in late game (progress > 70%)
+        if (progress > 0.70 && Math.random() < 0.45) {
           setTimeout(() => {
             if (this.isRunning) {
               this.createItem('SOLO', this.pickDynamicWaste(progress));
             }
-          }, 360);
+          }, 560);
         }
       }
     }
@@ -535,16 +536,16 @@ export class GameEngine {
 
     if (side === 'P1') {
       x = width * (0.08 + Math.random() * 0.34);
-      targetX = width * 0.25 + (Math.random() - 0.5) * (width * 0.18);
-      vx = (targetX - x) / (45 + Math.random() * 10);
+      targetX = width * 0.25 + (Math.random() - 0.5) * (width * 0.16);
+      vx = (targetX - x) / (56 + Math.random() * 14);
     } else if (side === 'P2') {
       x = width * (0.58 + Math.random() * 0.34);
-      targetX = width * 0.75 + (Math.random() - 0.5) * (width * 0.18);
-      vx = (targetX - x) / (45 + Math.random() * 10);
+      targetX = width * 0.75 + (Math.random() - 0.5) * (width * 0.16);
+      vx = (targetX - x) / (56 + Math.random() * 14);
     } else {
       x = width * (0.15 + Math.random() * 0.7);
-      targetX = width * 0.5 + (Math.random() - 0.5) * (width * 0.38);
-      vx = (targetX - x) / (45 + Math.random() * 12);
+      targetX = width * 0.5 + (Math.random() - 0.5) * (width * 0.35);
+      vx = (targetX - x) / (56 + Math.random() * 16);
     }
 
     const container = new Container();
@@ -589,9 +590,9 @@ export class GameEngine {
     container.position.set(x, height + type.radius + 10);
     this.itemsLayer.addChild(container);
 
-    // Maximize vertical jump apex to ~70% of screen height (resolution-independent kinematic formula)
-    const GRAVITY = 0.32;
-    const targetApexRatio = 0.68 + Math.random() * 0.05; // 68% to 73% of screen height
+    // Floatier, graceful launch reaching ~70% screen height with ample reaction time
+    const GRAVITY = 0.20;
+    const targetApexRatio = 0.67 + Math.random() * 0.05; // 67% to 72% screen height
     const riseDistance = height * targetApexRatio + type.radius + 10;
     const jumpSpeed = Math.sqrt(2 * GRAVITY * riseDistance);
 
@@ -604,7 +605,7 @@ export class GameEngine {
       vx,
       vy: -jumpSpeed,
       rotation: Math.random() * Math.PI * 2,
-      vRot: (Math.random() - 0.5) * 0.09,
+      vRot: (Math.random() - 0.5) * 0.07,
       radius: type.radius,
       sliced: false,
       container,
@@ -614,7 +615,7 @@ export class GameEngine {
   private updateItems(dt: number): void {
     const height = this.app.screen.height;
     const width = this.app.screen.width;
-    const GRAVITY = 0.32;
+    const GRAVITY = 0.20;
 
     this.items = this.items.filter((item) => {
       if (item.sliced) {
