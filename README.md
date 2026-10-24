@@ -1,6 +1,6 @@
-# 🥷 NETRASH NINJA — High-Performance Kiosk Edition
+# 🥷 NETRASH NINJA — Exhibition CITE UP 2026
 
-Game arcade interaktif berbasis web untuk pameran booth **NETRASH**. Menggunakan **PixiJS v8** (WebGL/WebGPU), pelacakan gestur kamera **MediaPipe Hands**, dan arsitektur modern **Vite + TypeScript**.
+Game arcade interaktif berbasis web untuk pameran **NETRASH** di **Exhibition CITE UP 2026**. Menggunakan **PixiJS v8** (WebGL/WebGPU), pelacakan gestur kamera **MediaPipe Hands**, dan arsitektur modern **Vite + TypeScript**.
 
 ---
 
