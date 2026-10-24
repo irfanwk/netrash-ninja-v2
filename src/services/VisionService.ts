@@ -13,11 +13,38 @@ export interface VisionPacket {
 
 export type VisionCallback = (packet: VisionPacket) => void;
 
+interface WindowMediaPipe extends Window {
+  Hands?: new (options: { locateFile: (file: string) => string }) => {
+    setOptions: (opts: {
+      maxNumHands: number;
+      modelComplexity: number;
+      minDetectionConfidence: number;
+      minTrackingConfidence: number;
+    }) => void;
+    onResults: (
+      cb: (results: {
+        image: HTMLCanvasElement;
+        multiHandLandmarks?: Array<Array<{ x: number; y: number }>>;
+      }) => void
+    ) => void;
+    send: (input: { image: HTMLCanvasElement }) => Promise<void>;
+  };
+  Camera?: new (
+    video: HTMLVideoElement,
+    options: {
+      onFrame: () => Promise<void>;
+      width: number;
+      height: number;
+    }
+  ) => {
+    start: () => Promise<void>;
+  };
+}
+
 export class VisionService {
-  private worker: Worker | null = null;
   private video: HTMLVideoElement | null = null;
-  private offscreenCanvas: OffscreenCanvas | HTMLCanvasElement;
-  private offscreenCtx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | null = null;
+  private offscreenCanvas: HTMLCanvasElement;
+  private offscreenCtx: CanvasRenderingContext2D | null = null;
   private isProcessing = false;
   private isActive = true;
   private callbacks: Set<VisionCallback> = new Set();
@@ -25,17 +52,10 @@ export class VisionService {
   public gameMode: GameMode = 'SOLO';
 
   constructor() {
-    if (typeof OffscreenCanvas !== 'undefined') {
-      this.offscreenCanvas = new OffscreenCanvas(480, 270);
-    } else {
-      this.offscreenCanvas = document.createElement('canvas');
-      this.offscreenCanvas.width = 480;
-      this.offscreenCanvas.height = 270;
-    }
-    this.offscreenCtx = this.offscreenCanvas.getContext('2d', { willReadFrequently: true }) as
-      | OffscreenCanvasRenderingContext2D
-      | CanvasRenderingContext2D
-      | null;
+    this.offscreenCanvas = document.createElement('canvas');
+    this.offscreenCanvas.width = 480;
+    this.offscreenCanvas.height = 270;
+    this.offscreenCtx = this.offscreenCanvas.getContext('2d', { willReadFrequently: true });
   }
 
   public onLandmarks(cb: VisionCallback): () => void {
@@ -45,99 +65,61 @@ export class VisionService {
 
   public async start(videoElement: HTMLVideoElement): Promise<boolean> {
     this.video = videoElement;
-
-    // Suppress potential third-party modal alert
     window.alert = console.warn;
 
+    const win = window as unknown as WindowMediaPipe;
+    if (!win.Hands) {
+      console.warn('MediaPipe Hands CDN not found on window.');
+      return false;
+    }
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          facingMode: 'user',
-        },
-        audio: false,
+      const handTracker = new win.Hands({
+        locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
       });
 
-      this.video.srcObject = stream;
-      await this.video.play();
-      this.isCameraReady = true;
+      handTracker.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.35,
+        minTrackingConfidence: 0.35,
+      });
 
-      this.initWorker();
-      this.startFrameLoop();
-      return true;
+      handTracker.onResults((results) => {
+        this.isProcessing = false;
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+          this.dispatchLandmarks(results.multiHandLandmarks);
+        }
+      });
+
+      if (win.Camera) {
+        const camera = new win.Camera(this.video, {
+          onFrame: async () => {
+            if (this.isActive && !this.isProcessing && this.video && this.video.readyState >= 2) {
+              this.isProcessing = true;
+              if (this.offscreenCtx) {
+                this.offscreenCtx.drawImage(this.video, 0, 0, 480, 270);
+                await handTracker.send({ image: this.offscreenCanvas });
+              } else {
+                this.isProcessing = false;
+              }
+            }
+          },
+          width: 1280,
+          height: 720,
+        });
+
+        await camera.start();
+        this.isCameraReady = true;
+        return true;
+      }
+
+      return false;
     } catch (err) {
-      console.warn('Webcam access failed or permission denied:', err);
+      console.warn('Camera / Hands initialization error:', err);
       this.isCameraReady = false;
       return false;
     }
-  }
-
-  private initWorker(): void {
-    try {
-      this.worker = new Worker(new URL('../workers/vision.worker.ts', import.meta.url), {
-        type: 'module',
-      });
-
-      this.worker.onmessage = (e: MessageEvent) => {
-        const { type, landmarks } = e.data;
-        this.isProcessing = false;
-
-        if (type === 'LANDMARKS' && landmarks && landmarks.length > 0) {
-          this.dispatchLandmarks(landmarks);
-        }
-      };
-
-      this.worker.postMessage({ type: 'INIT' });
-    } catch (workerErr) {
-      console.warn('Web Worker initialization error:', workerErr);
-    }
-  }
-
-  private startFrameLoop(): void {
-    const process = async () => {
-      if (!this.isActive) return;
-
-      if (
-        this.video &&
-        this.video.readyState >= 2 &&
-        !this.isProcessing &&
-        this.worker &&
-        this.isCameraReady
-      ) {
-        try {
-          this.isProcessing = true;
-          const timestamp = performance.now();
-
-          // Render 480x270 frame to reduce tensor memory & latency
-          if (this.offscreenCtx) {
-            this.offscreenCtx.drawImage(this.video, 0, 0, 480, 270);
-          }
-
-          let bitmap: ImageBitmap;
-          if ('transferToImageBitmap' in this.offscreenCanvas) {
-            bitmap = (this.offscreenCanvas as OffscreenCanvas).transferToImageBitmap();
-          } else {
-            bitmap = await createImageBitmap(this.offscreenCanvas as HTMLCanvasElement);
-          }
-
-          this.worker.postMessage(
-            {
-              type: 'PROCESS_FRAME',
-              bitmap,
-              timestamp,
-            },
-            [bitmap]
-          );
-        } catch {
-          this.isProcessing = false;
-        }
-      }
-
-      requestAnimationFrame(process);
-    };
-
-    requestAnimationFrame(process);
   }
 
   private dispatchLandmarks(allHandsLandmarks: Array<Array<{ x: number; y: number }>>): void {
@@ -151,21 +133,17 @@ export class VisionService {
       let bestP2: HandPosition | null = null;
 
       for (const landmarks of allHandsLandmarks) {
-        // Multi-landmark fallback: index tip (8) -> middle tip (12) -> knuckle (9) -> wrist (0)
         const pt = landmarks[8] || landmarks[12] || landmarks[9] || landmarks[0];
         if (!pt) continue;
 
-        // Mirrored coordinate mapping (1 - x)
         const screenX = (1 - pt.x) * width;
         const screenY = pt.y * height;
 
         if (screenX < width / 2) {
-          // Candidate for Player 1 (Left Half)
           if (!bestP1 || screenX < bestP1.x) {
             bestP1 = { x: screenX, y: screenY };
           }
         } else {
-          // Candidate for Player 2 (Right Half)
           if (!bestP2 || screenX > bestP2.x) {
             bestP2 = { x: screenX, y: screenY };
           }
@@ -175,7 +153,6 @@ export class VisionService {
       if (bestP1) packet.p1Hand = bestP1;
       if (bestP2) packet.p2Hand = bestP2;
     } else {
-      // SOLO MODE: Take first prominent hand
       const firstHand = allHandsLandmarks[0];
       if (firstHand) {
         const pt = firstHand[8] || firstHand[12] || firstHand[9] || firstHand[0];

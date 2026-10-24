@@ -14,6 +14,7 @@ export const WASTE_CATEGORIES: Record<string, WasteCategory> = {
     id: 'plastic',
     name: 'Plastik',
     category: 'PLASTIK',
+    icon: '🥤',
     color: '#0284c7',
     glowColor: 'rgba(2, 132, 199, 0.4)',
     points: 100,
@@ -25,6 +26,7 @@ export const WASTE_CATEGORIES: Record<string, WasteCategory> = {
     id: 'paper',
     name: 'Kardus',
     category: 'KERTAS',
+    icon: '📦',
     color: '#f59e0b',
     glowColor: 'rgba(245, 158, 11, 0.4)',
     points: 100,
@@ -36,6 +38,7 @@ export const WASTE_CATEGORIES: Record<string, WasteCategory> = {
     id: 'metal',
     name: 'Logam',
     category: 'LOGAM',
+    icon: '🥫',
     color: '#38bdf8',
     glowColor: 'rgba(56, 189, 248, 0.4)',
     points: 150,
@@ -47,6 +50,7 @@ export const WASTE_CATEGORIES: Record<string, WasteCategory> = {
     id: 'organic',
     name: 'Organik',
     category: 'ORGANIK',
+    icon: '🍎',
     color: '#16a34a',
     glowColor: 'rgba(22, 163, 74, 0.4)',
     points: 80,
@@ -58,6 +62,7 @@ export const WASTE_CATEGORIES: Record<string, WasteCategory> = {
     id: 'ewaste',
     name: 'Khusus',
     category: 'KHUSUS',
+    icon: '🔋',
     color: '#a855f7',
     glowColor: 'rgba(168, 85, 247, 0.4)',
     points: 200,
@@ -69,6 +74,7 @@ export const WASTE_CATEGORIES: Record<string, WasteCategory> = {
     id: 'b3',
     name: 'Limbah B3',
     category: 'BAHAYA',
+    icon: '💣',
     color: '#ef4444',
     glowColor: 'rgba(239, 68, 68, 0.5)',
     points: 0,
@@ -115,7 +121,7 @@ interface SlicedHalf {
   sliceAngle: number;
   isLeft: boolean;
   alpha: number;
-  graphics: Graphics;
+  container: Container;
 }
 
 interface ActiveParticle {
@@ -492,12 +498,23 @@ export class GameEngine {
 
     container.addChild(gfx);
 
+    // Center Icon Emoji (🥤, 📦, 🥫, 🍎, 🔋, 💣)
+    const icon = new Text({
+      text: type.icon,
+      style: new TextStyle({
+        fontSize: type.radius * 1.05,
+      }),
+    });
+    icon.anchor.set(0.5, 0.5);
+    icon.position.set(0, -4);
+    container.addChild(icon);
+
     // Label Text
     const label = new Text({
       text: type.name.toUpperCase(),
       style: new TextStyle({
         fontFamily: 'Inter, sans-serif',
-        fontSize: 11,
+        fontSize: 10.5,
         fontWeight: '800',
         fill: type.color,
       }),
@@ -566,13 +583,25 @@ export class GameEngine {
     const normal = sliceAngle + (isLeft ? -Math.PI / 2 : Math.PI / 2);
     const impulse = 3.5 + Math.random() * 2;
 
+    const container = new Container();
     const gfx = new Graphics();
     gfx.arc(0, 0, item.radius, isLeft ? -Math.PI / 2 : Math.PI / 2, isLeft ? Math.PI / 2 : (3 * Math.PI) / 2);
     gfx.fill({ color: 0x0f172a, alpha: 0.94 });
     gfx.stroke({ width: 3.5, color: item.type.color });
+    container.addChild(gfx);
 
-    gfx.position.set(item.x, item.y);
-    this.halvesLayer.addChild(gfx);
+    const halfIcon = new Text({
+      text: item.type.icon,
+      style: new TextStyle({
+        fontSize: item.radius * 1.05,
+      }),
+    });
+    halfIcon.anchor.set(0.5, 0.5);
+    halfIcon.position.set(isLeft ? -8 : 8, -4);
+    container.addChild(halfIcon);
+
+    container.position.set(item.x, item.y);
+    this.halvesLayer.addChild(container);
 
     this.halves.push({
       type: item.type,
@@ -585,7 +614,7 @@ export class GameEngine {
       sliceAngle,
       isLeft,
       alpha: 1,
-      graphics: gfx,
+      container,
     });
   }
 
@@ -599,13 +628,13 @@ export class GameEngine {
       half.rotation += half.vRot * dt;
       half.alpha -= 0.018 * dt;
 
-      half.graphics.position.set(half.x, half.y);
-      half.graphics.rotation = half.rotation;
-      half.graphics.alpha = Math.max(0, half.alpha);
+      half.container.position.set(half.x, half.y);
+      half.container.rotation = half.rotation;
+      half.container.alpha = Math.max(0, half.alpha);
 
       if (half.alpha <= 0 || half.y > height + 100) {
-        this.halvesLayer.removeChild(half.graphics);
-        half.graphics.destroy();
+        this.halvesLayer.removeChild(half.container);
+        half.container.destroy();
         return false;
       }
       return true;
@@ -794,7 +823,7 @@ export class GameEngine {
 
   private clearAllEntities(): void {
     for (const item of this.items) item.container.destroy();
-    for (const half of this.halves) half.graphics.destroy();
+    for (const half of this.halves) half.container.destroy();
     for (const p of this.particles) p.graphics.destroy();
     for (const t of this.floatTexts) t.text.destroy();
 

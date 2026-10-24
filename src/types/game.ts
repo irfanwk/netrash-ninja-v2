@@ -6,6 +6,7 @@ export interface WasteCategory {
   id: string;
   name: string;
   category: string;
+  icon: string;
   color: string;
   glowColor: string;
   points: number;
