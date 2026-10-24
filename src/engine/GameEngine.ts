@@ -82,18 +82,19 @@ export const WASTE_CATEGORIES: Record<string, WasteCategory> = {
     radius: 58,
     isBomb: true,
   },
+  URANIUM: {
+    id: 'uranium',
+    name: 'Uranium',
+    category: 'RADIOAKTIF',
+    icon: '☢️',
+    color: '#84cc16',
+    glowColor: 'rgba(132, 204, 22, 0.65)',
+    points: 0,
+    co2: 0,
+    radius: 56,
+    isBomb: true,
+  },
 };
-
-const SPAWN_POOL = [
-  WASTE_CATEGORIES.PLASTIC,
-  WASTE_CATEGORIES.PLASTIC,
-  WASTE_CATEGORIES.PAPER,
-  WASTE_CATEGORIES.PAPER,
-  WASTE_CATEGORIES.METAL,
-  WASTE_CATEGORIES.ORGANIC,
-  WASTE_CATEGORIES.EWASTE,
-  WASTE_CATEGORIES.B3_BOMB,
-];
 
 interface ActiveItem {
   id: number;
@@ -352,22 +353,32 @@ export class GameEngine {
     item.sliced = true;
     item.container.visible = false;
 
-    // BOMB LOGIC
+    // HAZARD LOGIC (B3 BOMB & RADIOACTIVE URANIUM)
     if (item.type.isBomb) {
-      sound.playExplosion();
-      this.spawnParticles(item.x, item.y, '#ef4444', 35);
+      const isUranium = item.type.id === 'uranium';
+
+      if (isUranium) {
+        sound.playRadiationZap();
+        this.spawnParticles(item.x, item.y, '#84cc16', 38);
+      } else {
+        sound.playExplosion();
+        this.spawnParticles(item.x, item.y, '#ef4444', 35);
+      }
+
+      const hazardColor = isUranium ? '#84cc16' : '#ef4444';
+      const hazardText = isUranium ? 'RADIASI URANIUM! -1 NYAWA' : 'BOM B3! -1 NYAWA';
 
       if (player === 'P1') {
         this.p1Stats.lives--;
-        this.spawnFloatingText(item.x, item.y, 'P1 BOM B3! -1 NYAWA', '#ef4444');
+        this.spawnFloatingText(item.x, item.y, `P1 ${hazardText}`, hazardColor);
         if (this.p1Stats.lives <= 0) this.stop('Player 2 Menang!');
       } else if (player === 'P2') {
         this.p2Stats.lives--;
-        this.spawnFloatingText(item.x, item.y, 'P2 BOM B3! -1 NYAWA', '#ef4444');
+        this.spawnFloatingText(item.x, item.y, `P2 ${hazardText}`, hazardColor);
         if (this.p2Stats.lives <= 0) this.stop('Player 1 Menang!');
       } else {
         this.soloStats.lives--;
-        this.spawnFloatingText(item.x, item.y, 'BOM B3! -1 NYAWA', '#ef4444');
+        this.spawnFloatingText(item.x, item.y, hazardText, hazardColor);
         if (this.soloStats.lives <= 0) this.stop('Habis Nyawa');
       }
       this.emitStats();
@@ -449,17 +460,69 @@ export class GameEngine {
   private handleSpawning(dt: number): void {
     this.spawnCooldown -= dt * 16.6;
     if (this.spawnCooldown <= 0) {
+      // Dynamic Difficulty Progression: 0 (start) to 1 (near end of 60s)
+      const progress = Math.min(1, Math.max(0, (60 - this.timeLeft) / 60));
+
+      // Cooldown accelerates as time runs down: 1200ms -> 600ms
+      const minCd = 550 + (1 - progress) * 550;
+      const maxCd = 850 + (1 - progress) * 650;
+      this.spawnCooldown = minCd + Math.random() * (maxCd - minCd);
+
       if (this.gameMode === 'VERSUS') {
-        const pair = SPAWN_POOL[Math.floor(Math.random() * SPAWN_POOL.length)];
+        const pair = this.pickDynamicWaste(progress);
         this.createItem('P1', pair);
         this.createItem('P2', pair);
-        this.spawnCooldown = 1300 + Math.random() * 700;
+
+        // Escalating multi-item burst chance
+        if (progress > 0.4 && Math.random() < 0.45) {
+          setTimeout(() => {
+            if (this.isRunning) {
+              const burstPair = this.pickDynamicWaste(progress);
+              this.createItem('P1', burstPair);
+              this.createItem('P2', burstPair);
+            }
+          }, 220);
+        }
       } else {
-        const item = SPAWN_POOL[Math.floor(Math.random() * SPAWN_POOL.length)];
+        const item = this.pickDynamicWaste(progress);
         this.createItem('SOLO', item);
-        this.spawnCooldown = 1000 + Math.random() * 800;
+
+        // Extra burst in mid/late game
+        if (progress > 0.35 && Math.random() < 0.45) {
+          setTimeout(() => {
+            if (this.isRunning) {
+              this.createItem('SOLO', this.pickDynamicWaste(progress));
+            }
+          }, 180);
+        }
+
+        // Second wave burst in late game
+        if (progress > 0.7 && Math.random() < 0.55) {
+          setTimeout(() => {
+            if (this.isRunning) {
+              this.createItem('SOLO', this.pickDynamicWaste(progress));
+            }
+          }, 360);
+        }
       }
     }
+  }
+
+  private pickDynamicWaste(progress: number): WasteCategory {
+    // Dynamic hazard weighting: early 10% -> late up to 26%
+    const hazardChance = 0.10 + progress * 0.16;
+    if (Math.random() < hazardChance) {
+      return Math.random() < 0.5 ? WASTE_CATEGORIES.URANIUM : WASTE_CATEGORIES.B3_BOMB;
+    }
+
+    const recyclables = [
+      WASTE_CATEGORIES.PLASTIC,
+      WASTE_CATEGORIES.PAPER,
+      WASTE_CATEGORIES.METAL,
+      WASTE_CATEGORIES.ORGANIC,
+      WASTE_CATEGORIES.EWASTE,
+    ];
+    return recyclables[Math.floor(Math.random() * recyclables.length)];
   }
 
   private createItem(side: PlayerSide, type: WasteCategory): void {
@@ -472,15 +535,15 @@ export class GameEngine {
 
     if (side === 'P1') {
       x = width * (0.08 + Math.random() * 0.34);
-      targetX = width * 0.25 + (Math.random() - 0.5) * (width * 0.16);
+      targetX = width * 0.25 + (Math.random() - 0.5) * (width * 0.18);
       vx = (targetX - x) / (45 + Math.random() * 10);
     } else if (side === 'P2') {
       x = width * (0.58 + Math.random() * 0.34);
-      targetX = width * 0.75 + (Math.random() - 0.5) * (width * 0.16);
+      targetX = width * 0.75 + (Math.random() - 0.5) * (width * 0.18);
       vx = (targetX - x) / (45 + Math.random() * 10);
     } else {
       x = width * (0.15 + Math.random() * 0.7);
-      targetX = width * 0.5 + (Math.random() - 0.5) * (width * 0.35);
+      targetX = width * 0.5 + (Math.random() - 0.5) * (width * 0.38);
       vx = (targetX - x) / (45 + Math.random() * 12);
     }
 
@@ -498,7 +561,7 @@ export class GameEngine {
 
     container.addChild(gfx);
 
-    // Center Icon Emoji (🥤, 📦, 🥫, 🍎, 🔋, 💣)
+    // Center Icon Emoji (🥤, 📦, 🥫, 🍎, 🔋, 💣, ☢️)
     const icon = new Text({
       text: type.icon,
       style: new TextStyle({
@@ -526,6 +589,9 @@ export class GameEngine {
     container.position.set(x, height + type.radius + 10);
     this.itemsLayer.addChild(container);
 
+    // Higher vertical launch: vy around -19.5 to -23.5 reaches top 15%-25% of the screen!
+    const jumpSpeed = 19.5 + Math.random() * 4.0;
+
     this.items.push({
       id: this.nextItemId++,
       type,
@@ -533,9 +599,9 @@ export class GameEngine {
       x,
       y: height + type.radius + 10,
       vx,
-      vy: -(14 + Math.random() * 5),
+      vy: -jumpSpeed,
       rotation: Math.random() * Math.PI * 2,
-      vRot: (Math.random() - 0.5) * 0.08,
+      vRot: (Math.random() - 0.5) * 0.09,
       radius: type.radius,
       sliced: false,
       container,
@@ -555,7 +621,8 @@ export class GameEngine {
 
       item.x += item.vx * dt;
       item.y += item.vy * dt;
-      item.vy += 0.32 * dt;
+      // Gentle gravity (0.28) gives floaty arc time
+      item.vy += 0.28 * dt;
       item.rotation += item.vRot * dt;
 
       // Arena boundary bounce in versus
