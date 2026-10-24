@@ -589,8 +589,11 @@ export class GameEngine {
     container.position.set(x, height + type.radius + 10);
     this.itemsLayer.addChild(container);
 
-    // Higher vertical launch: vy around -19.5 to -23.5 reaches top 15%-25% of the screen!
-    const jumpSpeed = 19.5 + Math.random() * 4.0;
+    // Maximize vertical jump apex to ~70% of screen height (resolution-independent kinematic formula)
+    const GRAVITY = 0.32;
+    const targetApexRatio = 0.68 + Math.random() * 0.05; // 68% to 73% of screen height
+    const riseDistance = height * targetApexRatio + type.radius + 10;
+    const jumpSpeed = Math.sqrt(2 * GRAVITY * riseDistance);
 
     this.items.push({
       id: this.nextItemId++,
@@ -611,6 +614,7 @@ export class GameEngine {
   private updateItems(dt: number): void {
     const height = this.app.screen.height;
     const width = this.app.screen.width;
+    const GRAVITY = 0.32;
 
     this.items = this.items.filter((item) => {
       if (item.sliced) {
@@ -621,8 +625,7 @@ export class GameEngine {
 
       item.x += item.vx * dt;
       item.y += item.vy * dt;
-      // Gentle gravity (0.28) gives floaty arc time
-      item.vy += 0.28 * dt;
+      item.vy += GRAVITY * dt;
       item.rotation += item.vRot * dt;
 
       // Arena boundary bounce in versus
