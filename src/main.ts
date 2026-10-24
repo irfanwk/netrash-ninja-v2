@@ -137,7 +137,7 @@ async function bootstrap() {
 
   function setMode(mode: GameMode) {
     currentMode = mode;
-    visionService.gameMode = mode;
+    visionService.setMode(mode);
     engine.setMode(mode);
 
     if (mode === 'VERSUS') {

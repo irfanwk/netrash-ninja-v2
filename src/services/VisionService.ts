@@ -13,49 +13,40 @@ export interface VisionPacket {
 
 export type VisionCallback = (packet: VisionPacket) => void;
 
+interface MediaPipeHandsInstance {
+  setOptions: (opts: {
+    maxNumHands: number;
+    modelComplexity: number;
+    minDetectionConfidence: number;
+    minTrackingConfidence: number;
+  }) => void;
+  onResults: (
+    cb: (results: {
+      image: HTMLCanvasElement;
+      multiHandLandmarks?: Array<Array<{ x: number; y: number }>>;
+    }) => void
+  ) => void;
+  send: (input: { image: HTMLCanvasElement }) => Promise<void>;
+}
+
 interface WindowMediaPipe extends Window {
-  Hands?: new (options: { locateFile: (file: string) => string }) => {
-    setOptions: (opts: {
-      maxNumHands: number;
-      modelComplexity: number;
-      minDetectionConfidence: number;
-      minTrackingConfidence: number;
-    }) => void;
-    onResults: (
-      cb: (results: {
-        image: HTMLCanvasElement;
-        multiHandLandmarks?: Array<Array<{ x: number; y: number }>>;
-      }) => void
-    ) => void;
-    send: (input: { image: HTMLCanvasElement }) => Promise<void>;
-  };
-  Camera?: new (
-    video: HTMLVideoElement,
-    options: {
-      onFrame: () => Promise<void>;
-      width: number;
-      height: number;
-    }
-  ) => {
-    start: () => Promise<void>;
-  };
+  Hands?: new (options: { locateFile: (file: string) => string }) => MediaPipeHandsInstance;
 }
 
 export class VisionService {
   private video: HTMLVideoElement | null = null;
   private offscreenCanvas: HTMLCanvasElement;
   private offscreenCtx: CanvasRenderingContext2D | null = null;
+  private handTracker: MediaPipeHandsInstance | null = null;
   private isProcessing = false;
   private isActive = true;
   private callbacks: Set<VisionCallback> = new Set();
   public isCameraReady = false;
   public gameMode: GameMode = 'SOLO';
 
-  private lastInferTime = 0;
-
   constructor() {
     this.offscreenCanvas = document.createElement('canvas');
-    // Optimal downscaled tensor resolution for MediaPipe Hands (360x202)
+    // Optimal downscaled tensor resolution (360x202) for MediaPipe internal 224x224 input
     this.offscreenCanvas.width = 360;
     this.offscreenCanvas.height = 202;
     this.offscreenCtx = this.offscreenCanvas.getContext('2d', { willReadFrequently: true });
@@ -64,6 +55,19 @@ export class VisionService {
   public onLandmarks(cb: VisionCallback): () => void {
     this.callbacks.add(cb);
     return () => this.callbacks.delete(cb);
+  }
+
+  public setMode(mode: GameMode): void {
+    this.gameMode = mode;
+    if (this.handTracker) {
+      // Dynamic hand allocation: Solo strictly 1 hand (50% CPU savings!), Versus 2 hands
+      this.handTracker.setOptions({
+        maxNumHands: mode === 'VERSUS' ? 2 : 1,
+        modelComplexity: 0,
+        minDetectionConfidence: 0.3,
+        minTrackingConfidence: 0.3,
+      });
+    }
   }
 
   public async start(videoElement: HTMLVideoElement): Promise<boolean> {
@@ -77,56 +81,69 @@ export class VisionService {
     }
 
     try {
-      const handTracker = new win.Hands({
+      this.handTracker = new win.Hands({
         locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
       });
 
-      // Ultra-fast Lite Model (modelComplexity: 0) uses ~5ms CPU per frame instead of 35ms!
-      handTracker.setOptions({
-        maxNumHands: 2,
+      this.handTracker.setOptions({
+        maxNumHands: this.gameMode === 'VERSUS' ? 2 : 1,
         modelComplexity: 0,
         minDetectionConfidence: 0.3,
         minTrackingConfidence: 0.3,
       });
 
-      handTracker.onResults((results) => {
+      this.handTracker.onResults((results) => {
         this.isProcessing = false;
         if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
           this.dispatchLandmarks(results.multiHandLandmarks);
         }
       });
 
-      if (win.Camera) {
-        const camera = new win.Camera(this.video, {
-          onFrame: async () => {
-            const now = performance.now();
-            // Throttle inference to 30 FPS (every 32ms) to leave 50%+ CPU headroom for 60-120 FPS game rendering
-            if (this.isActive && !this.isProcessing && this.video && this.video.readyState >= 2 && now - this.lastInferTime >= 32) {
-              this.isProcessing = true;
-              this.lastInferTime = now;
-              if (this.offscreenCtx) {
-                this.offscreenCtx.drawImage(this.video, 0, 0, 360, 202);
-                await handTracker.send({ image: this.offscreenCanvas });
-              } else {
-                this.isProcessing = false;
-              }
-            }
-          },
-          width: 640,
-          height: 360,
-        });
+      // Start webcam via native Web API (Zero requestAnimationFrame contention)
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 640 },
+          height: { ideal: 360 },
+          frameRate: { ideal: 30, max: 30 },
+          facingMode: 'user',
+        },
+        audio: false,
+      });
 
-        await camera.start();
-        this.isCameraReady = true;
-        return true;
-      }
+      this.video.srcObject = stream;
+      await this.video.play();
+      this.isCameraReady = true;
 
-      return false;
+      // Start Decoupled Async Inference Loop
+      // Runs in its own macro-task loop — NEVER locks or delays PixiJS 60 FPS requestAnimationFrame!
+      this.startDecoupledLoop();
+      return true;
     } catch (err) {
       console.warn('Camera / Hands initialization error:', err);
       this.isCameraReady = false;
       return false;
     }
+  }
+
+  private startDecoupledLoop(): void {
+    const runInference = async () => {
+      if (!this.isActive) return;
+
+      if (!this.isProcessing && this.video && this.video.readyState >= 2 && this.handTracker && this.offscreenCtx) {
+        this.isProcessing = true;
+        try {
+          this.offscreenCtx.drawImage(this.video, 0, 0, 360, 202);
+          await this.handTracker.send({ image: this.offscreenCanvas });
+        } catch {
+          this.isProcessing = false;
+        }
+      }
+
+      // Schedule next inference at ~30 FPS cadence (every 33ms)
+      setTimeout(runInference, 33);
+    };
+
+    runInference();
   }
 
   private dispatchLandmarks(allHandsLandmarks: Array<Array<{ x: number; y: number }>>): void {
